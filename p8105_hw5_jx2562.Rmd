@@ -86,4 +86,36 @@ As the plot shows, **Tulsa, AL** shows the lowest estimated proportion of unsolv
 
 ## Problem 2
 
+In this problem, we combine the control data and experimental data in separate files into one tidy dataframe. 
 
+```{r, message=F}
+file_names <- list.files(path = "data/problem 2", full.names = TRUE)
+
+study_df <- tibble(file = file_names)|>
+  mutate(
+    subject_id = tools::file_path_sans_ext(basename(file)),
+    arm = str_extract(basename(file), "(con|exp)")
+  ) |>
+  mutate(data = map(file, read_csv)) |>
+  unnest(data) |>
+  select(subject_id, arm, everything(),-file)
+```
+
+```{r}
+head(study_df)
+```
+Here we summarize the observations of each study subjects into one tidy data frame, with arms specified.
+
+```{r}
+study_df_long = study_df |>
+  pivot_longer(cols = starts_with("week"), names_to = "week", values_to = "observation") 
+
+ggplot(study_df_long, aes(x = as.factor(week), y = observation, group = subject_id, color = arm)) +
+  geom_line() +
+  labs(title = "Spaghetti Plot of Observations Over Time",
+       x = "Week",
+       y = "Observation") +
+  theme_minimal()
+
+```
+As we can see from the plot, experiment group generally has a larger values in observation than the control group. The differences is not so apparent until week 6. Exception appears in two of the experiment groups, in which they bypass the control group at the first week. Also, the experiment group shows a tendency of increase, while it shows moderate fluctuations around the center. 
