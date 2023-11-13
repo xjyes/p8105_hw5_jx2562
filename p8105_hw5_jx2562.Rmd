@@ -1,0 +1,89 @@
+---
+title: "p8105_hw5_jx2562"
+author: "Jingyi"
+date: "2023-11-13"
+output: github_document
+---
+
+
+```{r, message=FALSE}
+library(tidyverse)
+library(purrr)
+library(ggplot2)
+```
+
+## Problem 1
+
+Load the homicides dataset. Categorized the raw data by cites and summarize the total number of homicides and the number of unsolved homicides
+
+```{r}
+homicide_df = read_csv("data/homicide-data.csv") |>
+  mutate(city_state = paste(city, state, sep = ", ")) |>
+  group_by(city_state) |>
+  summarise(total_homicides = n(),
+            unsolved_homicides = sum(disposition %in% c("Closed without arrest", "Open/No arrest")))
+```
+
+Here we have a data frame which describe the total number of homicide in the cities and the number of unsolved homicides in the cities.
+
+Now, we estimate the proportion of homicides that are unsolved in Baltimore, MD. 
+
+```{r}
+baltimore_data = homicide_df |>
+  filter(city_state == "Baltimore, MD") 
+
+baltimore_test = prop.test(pull(baltimore_data, unsolved_homicides), pull(baltimore_data, total_homicides)) |>
+  broom::tidy()
+
+print(paste("Estimated proportion for Baltimore: ", round(baltimore_test$estimate[1], 4)))
+print(paste("Confidence interval for Baltimore: ", round(baltimore_test$conf.low, 4), "-", round(baltimore_test$conf.high, 4)))
+```
+
+Given the above pipeline, we can create a workflow to calculate the estimate proportions and CIs for each cities.
+
+```{r}
+run_prop_test <- function(city) {
+  data <- homicide_df |>
+    filter(city_state == city) 
+  
+  prop_test_result <- prop.test(pull(data, unsolved_homicides), pull(data, total_homicides))
+  tidy_result <- broom::tidy(prop_test_result)
+  
+  tibble(
+    estimated_proportion = tidy_result$estimate[1],
+    conf_low = tidy_result$conf.low,
+    conf_high = tidy_result$conf.high
+  )
+}
+```
+
+```{r, warning=FALSE}
+unsolved_prop <- homicide_df |>
+  mutate(prop_test_results = map(city_state, run_prop_test)) |>
+  unnest()
+
+head(unsolved_prop)
+```
+
+The `unsolved_prop` data frame present the estimated proportion and CIs for unsolved homicides in each city, along with the raw total count of homicides and unsolved homicides.
+
+Now we draw a plot that shows the estimates and CIs for each city.
+```{r}
+unsolved_prop$city_state <- factor(unsolved_prop$city_state,  levels=unsolved_prop$city_state[order(unsolved_prop$estimated_proportion)])
+
+ggplot(unsolved_prop, aes(x = city_state, y = estimated_proportion, ymin = conf_low, ymax = conf_high)) +
+  geom_point(size = 2) +
+  geom_errorbar(width = 0.2, position = position_dodge(0.2)) +
+  labs(title = "Estimated Proportion of Unsolved Homicides with Confidence Intervals",
+       x = "City",
+       y = "Estimated Proportion") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
+As the plot shows, **Tulsa, AL** shows the lowest estimated proportion of unsolved homicides case as well as the highest error bar. The small sample size may lead to the result. At the meantime, **Chicago, IL** shows the highest estimated proportion and a very narrow error bar, which may caused by a large sample size.
+
+
+## Problem 2
+
+
