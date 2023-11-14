@@ -9,7 +9,6 @@ output: github_document
 ```{r, message=FALSE}
 library(tidyverse)
 library(purrr)
-library(ggplot2)
 ```
 
 ## Problem 1
@@ -119,3 +118,114 @@ ggplot(study_df_long, aes(x = as.factor(week), y = observation, group = subject_
 
 ```
 As we can see from the plot, experiment group generally has a larger values in observation than the control group. The differences is not so apparent until week 6. Exception appears in two of the experiment groups, in which they bypass the control group at the first week. Also, the experiment group shows a tendency of increase, while it shows moderate fluctuations around the center. 
+
+
+## Problem 3
+
+This question aims to simulate data for a one-sample t-test, estimating the mean and p-value, and then calculating the power based on the simulated datasets.
+
+```{r}
+set.seed(123)
+```
+
+Set designed elements.
+```{r}
+n <- 30
+sigma <- 5
+alpha <- 0.05
+true_mu_values <- c(0, 1, 2, 3, 4, 5, 6)
+simulations <- 5000
+```
+
+Set a function to simulate and test the data.
+```{r}
+simulate_and_test <- function(true_mu) {
+  # Generate datasets and perform t-test
+  results <- replicate(simulations, {
+    datasets <- tibble(
+      x = rnorm(n, mean = true_mu, sd = sigma)
+    )
+    t_test_result <- broom::tidy(t.test(datasets$x, mu = 0))
+    return(tibble(
+      true_mu = true_mu,
+      estimate = t_test_result$estimate,
+      p_value = t_test_result$p.value
+    ))
+  }, simplify = FALSE)
+  
+  # Combine the results from replicate
+  bind_rows(results, .id = "simulation")
+}
+```
+
+Run stimulation and test on data sets with different mu values.
+```{r}
+# Run simulations for different true_mu values
+simulation_results <- map_dfr(true_mu_values, simulate_and_test)
+
+# Add a column to indicate whether null hypothesis was rejected
+simulation_results <- simulation_results |>
+  mutate(null_rejected = p_value < alpha)
+```
+
+Visualization:
+
+**Plot 1:** Power vs True mean
+
+```{r}
+power_plot <- simulation_results |>
+  group_by(true_mu) |>
+  summarise(power = mean(null_rejected)) |>
+  ggplot(aes(x = true_mu, y = power)) +
+  geom_line() +
+  labs(title = "Power vs True μ",
+       x = "True μ",
+       y = "Power") +
+  theme_minimal()
+
+# Show the power plot
+print(power_plot)
+```
+
+As we can observe, as the true mean increase, the power of the test also increase. A sudden rise appears for true mean between 1 and 3.
+
+
+**Plot 2:** Average Estimate of mean vs True mean
+
+```{r}
+avg_estimate_plot <- simulation_results |>
+  group_by(true_mu) |>
+  summarise(avg_estimate = mean(estimate)) |>
+  ggplot(aes(x = true_mu, y = avg_estimate)) +
+  geom_line() +
+  labs(title = "Average Estimate of μ̂ vs True μ",
+       x = "True μ",
+       y = "Average Estimate") +
+  theme_minimal()
+
+# Show the average estimate plot
+print(avg_estimate_plot)
+```
+The plot shows a clear positive relation ship between true mean and the estimated mean. To a certain extent, the estimated mean extremely approaches the true mean, indicating that the estimator is unbiased on average.
+
+
+**Plot 3:** Average Estimate of mean in Rejected Samples vs True mean
+
+```{r}
+avg_estimate_rejected_plot <- simulation_results |>
+  filter(null_rejected) |>
+  group_by(true_mu) |>
+  summarise(avg_estimate_rejected = mean(estimate)) |>
+  ggplot(aes(x = true_mu, y = avg_estimate_rejected)) +
+  geom_line() +
+  labs(title = "Average Estimate of μ̂ in Rejected Samples vs True μ",
+       x = "True μ",
+       y = "Average Estimate in Rejected Samples") +
+  theme_minimal()
+
+# Show the average estimate in rejected samples plot
+print(avg_estimate_rejected_plot)
+```
+Different from the above graph, in samples where the null hypothesis is rejected, the average estimate of mean tends to be higher than the true mean, especially for smaller samples with true means. This is called *Winner's curse*. This is because the sample that produced a significant result is likely to be one where the observed effect is larger than average due to random variability.
+
+However, for a larger true mean (4, 5, 6) the estimated mean for rejected samples is approximately equal to the true value of mean. Even though the Winner's Curse effect might still be present, the impact is less pronounced because the signal (difference from the null hypothesis) is more robust. In cases where the true mean is large, the signal stands out more clearly from random variability, leading to more accurate estimates even in samples where the null hypothesis is rejected.
